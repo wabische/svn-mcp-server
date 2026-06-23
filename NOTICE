@@ -1,0 +1,14 @@
+svn-mcp-server
+Copyright 2026 hira
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This project is an independent reimplementation. It was inspired by, and
+designed to interoperate with, the following prior MIT-licensed projects:
+  * gcorroto/mcp-svn            (Node/TypeScript) - https://github.com/gcorroto/mcp-svn
+  * manavdesai27/mcp-server-svn (Python)          - https://github.com/manavdesai27/mcp-server-svn
+No source code from those projects is included here.

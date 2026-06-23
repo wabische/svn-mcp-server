@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "svn-mcp-server"
+version = "0.1.0"
+description = "Unicode-safe (CJK/Japanese path) SVN MCP server with env-based auth and XML-parsed output"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "hira", email = "ship.hiramatsu@gmail.com" }]
+keywords = ["mcp", "svn", "subversion", "model-context-protocol", "unicode", "cjk"]
+dependencies = ["mcp>=1.2.0"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Topic :: Software Development :: Version Control",
+]
+
+[project.urls]
+Homepage = "https://github.com/wabische/svn-mcp-server"
+Issues = "https://github.com/wabische/svn-mcp-server/issues"
+
+[project.scripts]
+svn-mcp = "svn_mcp_server:main"
+
+[tool.setuptools]
+py-modules = ["svn_mcp_server"]
