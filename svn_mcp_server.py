@@ -109,6 +109,36 @@ def _parse_xml(out: str):
         return None, f"XML parse error: {ex}"
 
 
+def _resolve_path(path: Optional[str]) -> str:
+    """path が None または相対パスの場合は SVN_WORKDIR を基準に解決する。
+
+    MCP サーバープロセスの cwd はシステムルートなど予期しない場所になることがあるため、
+    os.getcwd() 依存を避けて常に SVN_WORKDIR を基準にする。
+    """
+    if not path:
+        return SVN_WORKDIR
+    if os.path.isabs(path):
+        return path
+    # "." や相対パスは SVN_WORKDIR 起点で解決
+    return os.path.normpath(os.path.join(SVN_WORKDIR, path))
+
+
+def _check_is_workdir(base: str) -> str:
+    """base 直下または祖先に .svn が無ければ警告メッセージを返す（空文字なら問題なし）。"""
+    check = base
+    for _ in range(5):
+        if os.path.isdir(os.path.join(check, ".svn")):
+            return ""
+        parent = os.path.dirname(check)
+        if parent == check:
+            break
+        check = parent
+    return (
+        f"warning: no .svn directory found under or above '{base}'. "
+        "The path may not be an SVN working copy. Set SVN_WORKING_DIRECTORY correctly."
+    )
+
+
 # ---------------------------------------------------------------------------
 # 参照系ツール
 # ---------------------------------------------------------------------------
@@ -458,7 +488,7 @@ def svn_grep(pattern: str, path: Optional[str] = None, regex: bool = True,
     path 省略時は SVN_WORKING_DIRECTORY 配下を検索。日本語を含むファイル/内容にも対応。
     extensions を指定すると対象拡張子を上書き（例: [".java", ".properties"]）。
     """
-    base = path or SVN_WORKDIR
+    base = _resolve_path(path)
     if not os.path.exists(base):
         return {"matches": [], "error": f"path not found: {base}"}
     flags = re.IGNORECASE if ignore_case else 0
@@ -542,9 +572,10 @@ def svn_loc_stats(path: Optional[str] = None,
     拡張子ごとに total/code/comment/blank を集計する。
     extensions を指定すると対象拡張子を絞り込める（例: [".java", ".xml"]）。
     """
-    base = path or SVN_WORKDIR
+    base = _resolve_path(path)
     if not os.path.exists(base):
         return {"by_extension": {}, "total": {}, "error": f"path not found: {base}"}
+    warn = _check_is_workdir(base)
     exts = set(e.lower() for e in extensions) if extensions else _TEXT_EXTS
     by_ext: dict = {}
     files_scanned = 0
@@ -576,7 +607,8 @@ def svn_loc_stats(path: Optional[str] = None,
         "by_extension": dict(sorted(by_ext.items(), key=lambda x: -x[1]["total"])),
         "total": total,
         "files_scanned": files_scanned,
-        "error": "",
+        "scanned_root": base,
+        "error": warn,
     }
 
 
@@ -650,9 +682,10 @@ def svn_size_stats(path: Optional[str] = None,
     ファイル数・合計バイト数・最大ファイル上位 top_n 件を返す。
     extensions を指定すると対象拡張子を絞り込める。
     """
-    base = path or SVN_WORKDIR
+    base = _resolve_path(path)
     if not os.path.exists(base):
         return {"by_extension": {}, "total": {}, "error": f"path not found: {base}"}
+    warn = _check_is_workdir(base)
     exts = set(e.lower() for e in extensions) if extensions else None
     by_ext: dict = {}
     large_files: list = []
@@ -685,7 +718,8 @@ def svn_size_stats(path: Optional[str] = None,
                   "mb": round(total_bytes / 1048576, 2)},
         "top_largest_files": large_files[:top_n],
         "files_scanned": files_scanned,
-        "error": "",
+        "scanned_root": base,
+        "error": warn,
     }
 
 
