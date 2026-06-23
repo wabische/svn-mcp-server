@@ -502,6 +502,193 @@ def svn_grep(pattern: str, path: Optional[str] = None, regex: bool = True,
             "files_scanned": files_scanned, "truncated": truncated, "error": ""}
 
 
+# ---------------------------------------------------------------------------
+# 開発規模計測ツール
+# ---------------------------------------------------------------------------
+_COMMENT_MARKERS = {
+    ".java": ("//", "/*", "*", "*/"),
+    ".js":   ("//", "/*", "*", "*/"),
+    ".ts":   ("//", "/*", "*", "*/"),
+    ".vue":  ("//", "/*", "*", "*/"),
+    ".py":   ("#",),
+    ".sql":  ("--", "/*", "*", "*/"),
+    ".css":  ("/*", "*", "*/"),
+    ".xml":  ("<!--", "-->", "<!--"),
+    ".html": ("<!--", "-->"),
+    ".htm":  ("<!--", "-->"),
+    ".properties": ("#",),
+    ".yml":  ("#",),
+    ".yaml": ("#",),
+}
+
+
+def _classify_line(line: str, ext: str) -> str:
+    """行を 'code' / 'comment' / 'blank' に分類する（簡易版）。"""
+    s = line.strip()
+    if not s:
+        return "blank"
+    markers = _COMMENT_MARKERS.get(ext, ())
+    for m in markers:
+        if s.startswith(m):
+            return "comment"
+    return "code"
+
+
+@mcp.tool()
+def svn_loc_stats(path: Optional[str] = None,
+                  extensions: Optional[List[str]] = None) -> dict:
+    """ローカル作業コピー配下のテキストファイルの行数統計を返す。
+
+    拡張子ごとに total/code/comment/blank を集計する。
+    extensions を指定すると対象拡張子を絞り込める（例: [".java", ".xml"]）。
+    """
+    base = path or SVN_WORKDIR
+    if not os.path.exists(base):
+        return {"by_extension": {}, "total": {}, "error": f"path not found: {base}"}
+    exts = set(e.lower() for e in extensions) if extensions else _TEXT_EXTS
+    by_ext: dict = {}
+    files_scanned = 0
+    for root, dirs, files in os.walk(base):
+        if ".svn" in dirs:
+            dirs.remove(".svn")
+        for fn in files:
+            ext = os.path.splitext(fn)[1].lower()
+            if ext not in exts:
+                continue
+            fp = os.path.join(root, fn)
+            try:
+                with open(fp, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+            except Exception:
+                continue
+            files_scanned += 1
+            bucket = by_ext.setdefault(ext, {"files": 0, "total": 0, "code": 0, "comment": 0, "blank": 0})
+            bucket["files"] += 1
+            bucket["total"] += len(lines)
+            for line in lines:
+                kind = _classify_line(line, ext)
+                bucket[kind] += 1
+    total = {"files": 0, "total": 0, "code": 0, "comment": 0, "blank": 0}
+    for v in by_ext.values():
+        for k in total:
+            total[k] += v[k]
+    return {
+        "by_extension": dict(sorted(by_ext.items(), key=lambda x: -x[1]["total"])),
+        "total": total,
+        "files_scanned": files_scanned,
+        "error": "",
+    }
+
+
+@mcp.tool()
+def svn_commit_stats(repo_path: Optional[str] = None,
+                     limit: Optional[int] = None,
+                     revision: Optional[str] = None,
+                     group_by_author: bool = True,
+                     group_by_month: bool = False) -> dict:
+    """SVN ログからコミット活動統計を集計する。
+
+    著者別コミット数・月別コミット数・変更ファイル数などを返す。
+    limit/revision は svn_log と同様に指定できる。
+    """
+    args = ["log", "--xml", "--verbose"]
+    if limit:
+        args += ["-l", str(int(limit))]
+    if revision:
+        args += ["-r", str(revision)]
+    if repo_path:
+        args.append(repo_path)
+    out, err = run_svn(args)
+    if err and not out:
+        return {"error": err}
+    root, perr = _parse_xml(out)
+    if root is None:
+        return {"error": perr or err}
+
+    by_author: dict = {}
+    by_month: dict = {}
+    total_commits = 0
+    total_changed_paths = 0
+
+    for e in root.findall("logentry"):
+        total_commits += 1
+        author = e.findtext("author") or "(unknown)"
+        date_str = e.findtext("date") or ""
+        month = date_str[:7]  # "2024-03"
+        plist = e.find("paths")
+        changed = len(plist.findall("path")) if plist is not None else 0
+        total_changed_paths += changed
+
+        if group_by_author:
+            bucket = by_author.setdefault(author, {"commits": 0, "changed_paths": 0})
+            bucket["commits"] += 1
+            bucket["changed_paths"] += changed
+
+        if group_by_month and month:
+            mbucket = by_month.setdefault(month, {"commits": 0, "changed_paths": 0})
+            mbucket["commits"] += 1
+            mbucket["changed_paths"] += changed
+
+    result: dict = {
+        "total_commits": total_commits,
+        "total_changed_paths": total_changed_paths,
+        "error": err,
+    }
+    if group_by_author:
+        result["by_author"] = dict(sorted(by_author.items(), key=lambda x: -x[1]["commits"]))
+    if group_by_month:
+        result["by_month"] = dict(sorted(by_month.items()))
+    return result
+
+
+@mcp.tool()
+def svn_size_stats(path: Optional[str] = None,
+                   extensions: Optional[List[str]] = None,
+                   top_n: int = 20) -> dict:
+    """ローカル作業コピー配下のファイル規模を拡張子別に集計する。
+
+    ファイル数・合計バイト数・最大ファイル上位 top_n 件を返す。
+    extensions を指定すると対象拡張子を絞り込める。
+    """
+    base = path or SVN_WORKDIR
+    if not os.path.exists(base):
+        return {"by_extension": {}, "total": {}, "error": f"path not found: {base}"}
+    exts = set(e.lower() for e in extensions) if extensions else None
+    by_ext: dict = {}
+    large_files: list = []
+    files_scanned = 0
+    for root, dirs, files in os.walk(base):
+        if ".svn" in dirs:
+            dirs.remove(".svn")
+        for fn in files:
+            ext = os.path.splitext(fn)[1].lower() or "(no ext)"
+            if exts and ext not in exts:
+                continue
+            fp = os.path.join(root, fn)
+            try:
+                size = os.path.getsize(fp)
+            except OSError:
+                continue
+            files_scanned += 1
+            bucket = by_ext.setdefault(ext, {"files": 0, "bytes": 0})
+            bucket["files"] += 1
+            bucket["bytes"] += size
+            large_files.append({"path": fp, "bytes": size, "ext": ext})
+
+    total_bytes = sum(v["bytes"] for v in by_ext.values())
+    total_files = sum(v["files"] for v in by_ext.values())
+    large_files.sort(key=lambda x: -x["bytes"])
+
+    return {
+        "by_extension": dict(sorted(by_ext.items(), key=lambda x: -x[1]["bytes"])),
+        "total": {"files": total_files, "bytes": total_bytes,
+                  "mb": round(total_bytes / 1048576, 2)},
+        "top_largest_files": large_files[:top_n],
+        "files_scanned": files_scanned,
+        "error": "",
+    }
+
+
 def main():
     mcp.run()
 

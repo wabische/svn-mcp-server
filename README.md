@@ -83,16 +83,87 @@ If you prefer not to install the package, use the single file instead:
 
 ## Tools
 
-Read / inspect: `svn_version`, `svn_health_check`, `svn_whoami`, `svn_info`, `svn_status`,
-`svn_log`, `svn_diff`, `svn_list`.
+### Read / inspect
 
-Fetch / update: `svn_checkout`, `svn_update` (supports `set_depth` for sparse checkouts),
-`svn_cleanup`.
+| Tool | Description |
+| ---- | ----------- |
+| `svn_version` | SVN client version |
+| `svn_health_check` | Check SVN availability and working copy state |
+| `svn_whoami` | Current SVN username |
+| `svn_info` | Detailed info for a path or URL |
+| `svn_status` | Working copy file status |
+| `svn_log` | Commit history |
+| `svn_diff` | Diff between revisions |
+| `svn_list` | Directory listing |
+| `svn_cat` | File content (local or via `svn cat`) |
+| `svn_grep` | Full-text regex search across working copy |
 
-Write: `svn_add`, `svn_commit`, `svn_delete`, `svn_revert`.
+### Fetch / update
+
+| Tool | Description |
+| ---- | ----------- |
+| `svn_checkout` | Checkout a URL to a local path |
+| `svn_update` | Update working copy (supports `set_depth` for sparse checkouts) |
+| `svn_cleanup` | Clean up interrupted operations |
+
+### Write
+
+| Tool | Description |
+| ---- | ----------- |
+| `svn_add` | Stage files for version control |
+| `svn_commit` | Commit changes (**requires human review**) |
+| `svn_delete` | Delete files or URLs (**requires human review**) |
+| `svn_revert` | Revert local changes |
 
 > **Note on write operations.** `svn_commit` and repository-side `svn_delete` write to version
 > control. Use them only after explicit human review/approval.
+
+### Development scale metrics
+
+These tools measure the size and activity of a project checked out locally.
+
+| Tool | Description |
+| ---- | ----------- |
+| `svn_loc_stats` | Lines-of-code breakdown (total / code / comment / blank) by file extension |
+| `svn_commit_stats` | Commit activity aggregated by author and/or calendar month |
+| `svn_size_stats` | File count and byte size by extension, plus the largest-files list |
+
+#### `svn_loc_stats`
+
+```
+svn_loc_stats(path=None, extensions=None)
+```
+
+Walks the working copy and classifies every line as **code**, **comment**, or **blank**.
+Results are grouped by extension and summed into a `total` entry.
+
+- `path` — root to scan (defaults to `SVN_WORKING_DIRECTORY`)
+- `extensions` — list of extensions to include, e.g. `[".java", ".xml"]`
+  (defaults to the built-in text-file set)
+
+#### `svn_commit_stats`
+
+```
+svn_commit_stats(repo_path=None, limit=None, revision=None,
+                 group_by_author=True, group_by_month=False)
+```
+
+Parses `svn log --verbose --xml` and aggregates commit counts and changed-path counts.
+
+- `group_by_author` — include per-author breakdown (default `true`)
+- `group_by_month` — include per-month breakdown (default `false`)
+- `limit` / `revision` — same semantics as `svn_log`
+
+#### `svn_size_stats`
+
+```
+svn_size_stats(path=None, extensions=None, top_n=20)
+```
+
+Collects file sizes from the working copy filesystem.  Returns per-extension file count
+and byte totals, the overall total in bytes and MB, and the `top_n` largest individual files.
+
+- `.svn` metadata directories are automatically excluded.
 
 ## Credits
 
