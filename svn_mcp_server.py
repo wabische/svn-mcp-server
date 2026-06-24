@@ -275,6 +275,69 @@ def svn_log(repo_path: Optional[str] = None, limit: Optional[int] = None,
 
 
 @mcp.tool()
+def svn_log_search(repo_path: Optional[str] = None,
+                   author: Optional[str] = None,
+                   message: Optional[str] = None,
+                   revision: Optional[str] = None,
+                   limit: Optional[int] = None,
+                   ignore_case: bool = True,
+                   regex: bool = False,
+                   with_paths: bool = False) -> dict:
+    """コミットログをリビジョン範囲・作者・メッセージで絞り込み検索する。
+
+    author / message はデフォルトで部分一致（ignore_case=True）。
+    regex=True にすると正規表現として扱う。
+    with_paths=True にすると変更ファイルパスも返す（--verbose）。
+    """
+    args = ["log", "--xml"]
+    if with_paths:
+        args.append("--verbose")
+    if limit:
+        args += ["-l", str(int(limit))]
+    if revision:
+        args += ["-r", str(revision)]
+    if repo_path:
+        args.append(repo_path)
+    out, err = run_svn(args)
+    if err and not out:
+        return {"entries": [], "count": 0, "error": err}
+    root, perr = _parse_xml(out)
+    if root is None:
+        return {"entries": [], "count": 0, "error": perr or err}
+
+    flags = re.IGNORECASE if ignore_case else 0
+    try:
+        author_rx = re.compile(author if regex else re.escape(author), flags) if author else None
+        message_rx = re.compile(message if regex else re.escape(message), flags) if message else None
+    except re.error as ex:
+        return {"entries": [], "count": 0, "error": f"invalid regex: {ex}"}
+
+    entries = []
+    for e in root.findall("logentry"):
+        entry_author = e.findtext("author") or ""
+        entry_msg = e.findtext("msg") or ""
+        if author_rx and not author_rx.search(entry_author):
+            continue
+        if message_rx and not message_rx.search(entry_msg):
+            continue
+        item: dict = {
+            "revision": e.get("revision"),
+            "author": entry_author,
+            "date": e.findtext("date") or "",
+            "message": entry_msg,
+        }
+        if with_paths:
+            plist = e.find("paths")
+            item["paths"] = [
+                {"action": p.get("action"), "path": p.text or ""}
+                for p in (plist.findall("path") if plist is not None else [])
+            ]
+        entries.append(item)
+
+    return {"entries": entries, "count": len(entries), "error": err}
+
+
+@mcp.tool()
 def svn_diff(repo_path: Optional[str] = None, revision: Optional[str] = None,
              old_revision: Optional[str] = None, new_revision: Optional[str] = None) -> dict:
     """差分を返す。revision（単一/範囲）または old/new リビジョン指定に対応。"""
@@ -289,6 +352,73 @@ def svn_diff(repo_path: Optional[str] = None, revision: Optional[str] = None,
     if err and not out:
         return {"diff": "", "error": err}
     return {"diff": out, "error": err}
+
+
+@mcp.tool()
+def svn_diff_stats(repo_path: Optional[str] = None, revision: Optional[str] = None,
+                   old_revision: Optional[str] = None, new_revision: Optional[str] = None,
+                   extensions: Optional[List[str]] = None) -> dict:
+    """差分の追加/削除行数をファイル別・拡張子別に集計して返す。
+
+    引数は svn_diff と同じ。extensions を指定すると対象拡張子を絞り込める。
+    各ファイルの added/removed と全体の total を返す。
+    """
+    args = ["diff"]
+    if old_revision and new_revision:
+        args += ["-r", f"{old_revision}:{new_revision}"]
+    elif revision:
+        args += ["-r", str(revision)]
+    if repo_path:
+        args.append(repo_path)
+    out, err = run_svn(args)
+    if err and not out:
+        return {"files": [], "by_extension": {}, "total": {}, "error": err}
+
+    exts_filter = set(e.lower() for e in extensions) if extensions else None
+    files: List[dict] = []
+    by_ext: dict = {}
+    current_file: Optional[str] = None
+    added = removed = 0
+
+    def _flush():
+        nonlocal current_file, added, removed
+        if current_file is None:
+            return
+        ext = os.path.splitext(current_file)[1].lower() or "(no ext)"
+        if exts_filter is None or ext in exts_filter:
+            files.append({"file": current_file, "added": added, "removed": removed,
+                          "delta": added - removed})
+            b = by_ext.setdefault(ext, {"files": 0, "added": 0, "removed": 0})
+            b["files"] += 1
+            b["added"] += added
+            b["removed"] += removed
+        current_file = None
+        added = removed = 0
+
+    for line in out.splitlines():
+        if line.startswith("Index: "):
+            _flush()
+            current_file = line[7:].strip()
+            added = removed = 0
+        elif line.startswith("+") and not line.startswith("+++"):
+            added += 1
+        elif line.startswith("-") and not line.startswith("---"):
+            removed += 1
+    _flush()
+
+    total_added = sum(f["added"] for f in files)
+    total_removed = sum(f["removed"] for f in files)
+    return {
+        "files": sorted(files, key=lambda x: -(x["added"] + x["removed"])),
+        "by_extension": dict(sorted(by_ext.items(), key=lambda x: -(x[1]["added"] + x[1]["removed"]))),
+        "total": {
+            "files_changed": len(files),
+            "added": total_added,
+            "removed": total_removed,
+            "delta": total_added - total_removed,
+        },
+        "error": err,
+    }
 
 
 @mcp.tool()

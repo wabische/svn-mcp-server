@@ -93,7 +93,9 @@ If you prefer not to install the package, use the single file instead:
 | `svn_info` | Detailed info for a path or URL |
 | `svn_status` | Working copy file status |
 | `svn_log` | Commit history |
+| `svn_log_search` | Search commits by author, message, or revision range |
 | `svn_diff` | Diff between revisions |
+| `svn_diff_stats` | Added/removed line counts per file and extension from a diff |
 | `svn_list` | Directory listing |
 | `svn_cat` | File content (local or via `svn cat`) |
 | `svn_grep` | Full-text regex search across working copy |
@@ -153,6 +155,20 @@ Parses `svn log --verbose --xml` and aggregates commit counts and changed-path c
 - `group_by_author` — include per-author breakdown (default `true`)
 - `group_by_month` — include per-month breakdown (default `false`)
 - `limit` / `revision` — same semantics as `svn_log`
+
+#### `svn_diff_stats`
+
+```
+svn_diff_stats(repo_path=None, revision=None, old_revision=None, new_revision=None,
+               extensions=None)
+```
+
+Runs `svn diff` and parses the unified-diff output to count added and removed lines per file.
+Returns a per-file list sorted by total churn, an extension breakdown, and a `total` summary
+(`files_changed`, `added`, `removed`, `delta`).
+
+- Arguments are identical to `svn_diff`
+- `extensions` — restrict counting to specific extensions, e.g. `[".java"]`
 
 #### `svn_size_stats`
 
