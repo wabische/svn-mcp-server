@@ -721,11 +721,13 @@ def svn_loc_stats(path: Optional[str] = None,
         except ValueError:
             return {"by_group": {}, "total": {}, "error": f"invalid group_by: {group_by}"}
 
-    def _group_key(fn: str) -> str:
+    def _group_key(fn: str, fp: str) -> str:
         if prefix_n is not None:
             return fn[:prefix_n]
         if group_by == "filename_stem":
             return os.path.splitext(fn)[0]
+        if group_by == "dirname":
+            return os.path.relpath(os.path.dirname(fp), base)
         return os.path.splitext(fn)[1].lower() or "(no ext)"
 
     by_group: dict = {}
@@ -746,7 +748,7 @@ def svn_loc_stats(path: Optional[str] = None,
             except Exception:
                 continue
             files_scanned += 1
-            key = _group_key(fn)
+            key = _group_key(fn, fp)
             bucket = by_group.setdefault(key, {"files": 0, "total": 0, "code": 0, "comment": 0, "blank": 0})
             bucket["files"] += 1
             bucket["total"] += len(lines)

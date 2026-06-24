@@ -147,6 +147,7 @@ Results are grouped by the `group_by` key and summed into a `total` entry.
   Useful for aggregating by business-category prefix when filenames follow a naming convention.
 - `group_by` — how to group results:
   - `"extension"` (default) — group by file extension
+  - `"dirname"` — group by directory path (relative to `path`)
   - `"prefix_N"` — group by first N characters of the filename (e.g. `"prefix_3"`)
   - `"filename_stem"` — group by filename without extension
 
