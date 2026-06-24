@@ -134,15 +134,21 @@ These tools measure the size and activity of a project checked out locally.
 #### `svn_loc_stats`
 
 ```
-svn_loc_stats(path=None, extensions=None)
+svn_loc_stats(path=None, extensions=None, filename_pattern=None, group_by="extension")
 ```
 
 Walks the working copy and classifies every line as **code**, **comment**, or **blank**.
-Results are grouped by extension and summed into a `total` entry.
+Results are grouped by the `group_by` key and summed into a `total` entry.
 
 - `path` — root to scan (defaults to `SVN_WORKING_DIRECTORY`)
 - `extensions` — list of extensions to include, e.g. `[".java", ".xml"]`
   (defaults to the built-in text-file set)
+- `filename_pattern` — glob filter on the filename, e.g. `"accept_*"` or `"*Form.java"`.
+  Useful for aggregating by business-category prefix when filenames follow a naming convention.
+- `group_by` — how to group results:
+  - `"extension"` (default) — group by file extension
+  - `"prefix_N"` — group by first N characters of the filename (e.g. `"prefix_3"`)
+  - `"filename_stem"` — group by filename without extension
 
 #### `svn_commit_stats`
 

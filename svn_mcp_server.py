@@ -696,18 +696,39 @@ def _classify_line(line: str, ext: str) -> str:
 
 @mcp.tool()
 def svn_loc_stats(path: Optional[str] = None,
-                  extensions: Optional[List[str]] = None) -> dict:
+                  extensions: Optional[List[str]] = None,
+                  filename_pattern: Optional[str] = None,
+                  group_by: str = "extension") -> dict:
     """ローカル作業コピー配下のテキストファイルの行数統計を返す。
 
-    拡張子ごとに total/code/comment/blank を集計する。
     extensions を指定すると対象拡張子を絞り込める（例: [".java", ".xml"]）。
+    filename_pattern を指定するとファイル名を glob でフィルタできる（例: "accept_*", "*Form.java"）。
+    group_by: "extension"（既定）または "prefix_N"（ファイル名先頭 N 文字でグループ化、例: "prefix_3"）
+              または "filename_stem"（拡張子なしファイル名でグループ化）。
     """
+    import fnmatch
+
     base = _resolve_path(path)
     if not os.path.exists(base):
-        return {"by_extension": {}, "total": {}, "error": f"path not found: {base}"}
+        return {"by_group": {}, "total": {}, "error": f"path not found: {base}"}
     warn = _check_is_workdir(base)
     exts = set(e.lower() for e in extensions) if extensions else _TEXT_EXTS
-    by_ext: dict = {}
+
+    prefix_n = None
+    if group_by.startswith("prefix_"):
+        try:
+            prefix_n = int(group_by.split("_", 1)[1])
+        except ValueError:
+            return {"by_group": {}, "total": {}, "error": f"invalid group_by: {group_by}"}
+
+    def _group_key(fn: str) -> str:
+        if prefix_n is not None:
+            return fn[:prefix_n]
+        if group_by == "filename_stem":
+            return os.path.splitext(fn)[0]
+        return os.path.splitext(fn)[1].lower() or "(no ext)"
+
+    by_group: dict = {}
     files_scanned = 0
     for root, dirs, files in os.walk(base):
         if ".svn" in dirs:
@@ -716,6 +737,8 @@ def svn_loc_stats(path: Optional[str] = None,
             ext = os.path.splitext(fn)[1].lower()
             if ext not in exts:
                 continue
+            if filename_pattern and not fnmatch.fnmatch(fn, filename_pattern):
+                continue
             fp = os.path.join(root, fn)
             try:
                 with open(fp, "r", encoding="utf-8", errors="replace") as f:
@@ -723,18 +746,21 @@ def svn_loc_stats(path: Optional[str] = None,
             except Exception:
                 continue
             files_scanned += 1
-            bucket = by_ext.setdefault(ext, {"files": 0, "total": 0, "code": 0, "comment": 0, "blank": 0})
+            key = _group_key(fn)
+            bucket = by_group.setdefault(key, {"files": 0, "total": 0, "code": 0, "comment": 0, "blank": 0})
             bucket["files"] += 1
             bucket["total"] += len(lines)
             for line in lines:
                 kind = _classify_line(line, ext)
                 bucket[kind] += 1
     total = {"files": 0, "total": 0, "code": 0, "comment": 0, "blank": 0}
-    for v in by_ext.values():
+    for v in by_group.values():
         for k in total:
             total[k] += v[k]
     return {
-        "by_extension": dict(sorted(by_ext.items(), key=lambda x: -x[1]["total"])),
+        "by_group": dict(sorted(by_group.items(), key=lambda x: -x[1]["total"])),
+        "group_by": group_by,
+        "filename_pattern": filename_pattern,
         "total": total,
         "files_scanned": files_scanned,
         "scanned_root": base,
