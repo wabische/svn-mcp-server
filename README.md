@@ -48,7 +48,8 @@ Add to `claude_desktop_config.json` (Windows: `%APPDATA%\Claude\claude_desktop_c
 {
   "mcpServers": {
     "svn": {
-      "command": "svn-mcp",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/wabische/svn-mcp-server.git", "svn-mcp"],
       "env": {
         "SVN_WORKING_DIRECTORY": "C:\\path\\to\\working\\copy",
         "SVN_USERNAME": "your_user",
@@ -62,12 +63,33 @@ Add to `claude_desktop_config.json` (Windows: `%APPDATA%\Claude\claude_desktop_c
 }
 ```
 
-If you prefer not to install the package, use the single file instead:
+`uvx` fetches the latest version from GitHub on each Claude Desktop restart, so no manual
+`pip install` is needed after updates. Install `uv` if you don't have it:
 
-```json
-"command": "python",
-"args": ["C:\\path\\to\\svn_mcp_server.py"]
+```bash
+pip install uv
 ```
+
+### Alternative: local install
+
+If you have cloned the repository and want to pin to a specific local version:
+
+```bash
+pip install "git+https://github.com/wabische/svn-mcp-server.git"
+```
+
+Then use `"command": "svn-mcp"` (no `args`) in the config above.
+
+For local development (editable install — changes to `svn_mcp_server.py` take effect on
+restart without reinstalling):
+
+```bash
+git clone https://github.com/wabische/svn-mcp-server.git
+cd svn-mcp-server
+pip install -e .
+```
+
+Then set `"command": "svn-mcp"` and point `SVN_WORKING_DIRECTORY` to your working copy.
 
 ## Environment variables
 
