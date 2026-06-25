@@ -128,6 +128,7 @@ These tools measure the size and activity of a project checked out locally.
 | Tool | Description |
 | ---- | ----------- |
 | `svn_loc_stats` | Lines-of-code breakdown (total / code / comment / blank) by file extension |
+| `svn_file_loc_export` | Export per-file LOC to a local CSV/TSV/JSONL file; returns summary only |
 | `svn_commit_stats` | Commit activity aggregated by author and/or calendar month |
 | `svn_size_stats` | File count and byte size by extension, plus the largest-files list |
 
@@ -163,6 +164,29 @@ Parses `svn log --verbose --xml` and aggregates commit counts and changed-path c
 - `group_by_author` — include per-author breakdown (default `true`)
 - `group_by_month` — include per-month breakdown (default `false`)
 - `limit` / `revision` — same semantics as `svn_log`
+
+#### `svn_file_loc_export`
+
+```
+svn_file_loc_export(path, extensions=None, exclude_patterns=None,
+                    output_path=None, output_format="csv",
+                    include_svn_revision=False)
+```
+
+Recursively scans `path` and writes one row per file to a local file.
+Returns a summary (total files, lines, code/comment/blank breakdown by extension) only —
+the full file list is never sent back through the MCP response, avoiding token/timeout limits.
+
+| Parameter | Description |
+| --------- | ----------- |
+| `path` | Root path to scan (required). Relative paths are resolved from `SVN_WORKING_DIRECTORY`. |
+| `extensions` | List of extensions to include, e.g. `[".java", ".jsp", ".sql"]`. Defaults to the built-in text-file set. |
+| `exclude_patterns` | Glob patterns to exclude, matched against the relative path (forward-slash form), e.g. `["*/test/*"]`. |
+| `output_path` | Where to write the output file. Auto-generated as `_loc_export_<timestamp>.csv` next to `path` if omitted. |
+| `output_format` | `"csv"` (default, UTF-8 BOM for Excel), `"tsv"`, or `"jsonl"`. |
+| `include_svn_revision` | If `true`, fetches the last-changed revision for each file via `svn info`. Adds one SVN call per file — use only when needed. |
+
+**Output file columns**: `relative_path`, `extension`, `total`, `code`, `comment`, `blank`, `size_bytes`, `last_revision`
 
 #### `svn_diff_stats`
 
