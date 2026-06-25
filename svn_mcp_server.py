@@ -780,11 +780,16 @@ def svn_file_loc_export(
     output_path: Optional[str] = None,
     output_format: str = "csv",
     include_svn_revision: bool = False,
+    inline_if_small: bool = True,
+    inline_threshold: int = 300,
 ) -> dict:
     """指定パス配下の全ファイルをスキャンし、ファイル単位の行数をCSV/TSV/JSONLに出力する。
 
     大量ファイル（数千件）を1回の呼び出しで処理し、チャットには要約のみ返す。
     出力ファイルはローカルに保存される（UTF-8 BOM付きCSV/TSV、またはJSONL）。
+
+    inline_if_small=True（既定）かつ対象ファイル数 ≤ inline_threshold（既定300）の場合、
+    要約に加えてファイル単位レコードを files フィールドに直接返す。
 
     include_svn_revision=True にすると各ファイルの最終更新リビジョンも取得するが、
     ファイル数分の svn info 呼び出しが発生するため時間がかかる。
@@ -900,7 +905,7 @@ def svn_file_loc_export(
         for k in total_summary:
             total_summary[k] += v[k]
 
-    return {
+    result = {
         "output_file": out_file,
         "total_files": total_summary["files"],
         "total_lines": total_summary["total"],
@@ -912,6 +917,13 @@ def svn_file_loc_export(
         "elapsed_ms": elapsed_ms,
         "error": warn,
     }
+
+    do_inline = inline_if_small and len(rows) <= inline_threshold
+    result["inline_included"] = do_inline
+    if do_inline:
+        result["files"] = rows
+
+    return result
 
 
 @mcp.tool()
