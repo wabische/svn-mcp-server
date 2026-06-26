@@ -781,7 +781,7 @@ def svn_file_loc_export(
     output_format: str = "csv",
     include_svn_revision: bool = False,
     inline_if_small: bool = True,
-    inline_threshold: int = 300,
+    inline_threshold: int = 10000,
 ) -> dict:
     """指定パス配下の全ファイルをスキャンし、ファイル単位の行数をCSV/TSV/JSONLに出力する。
 

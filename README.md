@@ -186,7 +186,7 @@ the full file list is never sent back through the MCP response, avoiding token/t
 | `output_format` | `"csv"` (default, UTF-8 BOM for Excel), `"tsv"`, or `"jsonl"`. |
 | `include_svn_revision` | If `true`, fetches the last-changed revision for each file via `svn info`. Adds one SVN call per file — use only when needed. |
 | `inline_if_small` | If `true` (default) and the file count ≤ `inline_threshold`, include per-file records in the response under `files`. Claude can then process the data directly without reading the CSV. |
-| `inline_threshold` | Maximum file count for inline inclusion (default `300`). If exceeded, only the summary and `output_file` path are returned. |
+| `inline_threshold` | Maximum file count for inline inclusion (default `10000`). If exceeded, only the summary and `output_file` path are returned. |
 
 **Output file columns**: `relative_path`, `extension`, `total`, `code`, `comment`, `blank`, `size_bytes`, `last_revision`
 
